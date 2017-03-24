@@ -2,9 +2,9 @@
 
 A work in progress...
 
-With a Dynamic Module called Frogs with a singular type name of Frog
-Title Field: Short Text
-Image Field: Related Media - Single Selection
+* Dynamic Module called Frogs with a singular type name of Frog
+* Title Field: Short Text
+* Image Field: Related Media - Single Selection
 
 ```C#
 public class Frog
