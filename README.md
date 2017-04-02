@@ -14,9 +14,9 @@ public class Frog
 {
     public string Title { get; set; }
     public DateTime LastModified { get; set; } 		// Include/Query any standard properties of DynamicContent
-    public Image Image { get; set; } 				// Impey.Sitefinity.Repository.Fields.Image
-	public List<Category> Categories { get; set; } 	// Impey.Sitefinity.Repository.Fields.Category
-    public List<Tag> Tags { get; set; } 			// Impey.Sitefinity.Repository.Fields.Tag
+    public Image Image { get; set; } 			// Impey.Sitefinity.Repository.Fields.Image
+    public List<Category> Categories { get; set; } 	// Impey.Sitefinity.Repository.Fields.Category
+    public List<Tag> Tags { get; set; } 		// Impey.Sitefinity.Repository.Fields.Tag
     public List<Category> Departments { get; set; }
 }
 
@@ -54,10 +54,10 @@ var frogs = repo
 ```C#
 public class Toad
 {
-	public string Title { get; set; }
-	public string Content { get; set; }
-	public Image Thumbnail { get; set; }
-	public List<Category> Categories { get; set; }
+    public string Title { get; set; }
+    public string Content { get; set; }
+    public Image Thumbnail { get; set; }
+    public List<Category> Categories { get; set; }
 }
 
 public interface IToadRepository : ISitefinityRepository<Toad>
