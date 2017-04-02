@@ -4,7 +4,7 @@ using System.Linq.Expressions;
 
 namespace Impey.Sitefinity.Repository.Base
 {
-    public interface ISitefinityQuery<TModel>
+    public interface ISitefinityQuery<TModel> : IEnumerable<TModel>
     {
         List<TModel> ToList();
         TModel FirstOrDefault();

@@ -1,14 +1,23 @@
-﻿using Impey.Sitefinity.Repository.Models;
+﻿using Impey.Sitefinity.Repository.Cache;
 using System;
-using System.Collections.Generic;
 using System.Linq.Expressions;
 using System.Reflection;
-using Telerik.Sitefinity.Libraries.Model;
 
 namespace Impey.Sitefinity.Repository.Extensions
 {
     public static class PropertyInfoExtensions
     {
+        public static string GetName(this PropertyInfo info)
+        {
+            switch (info.Name)
+            {
+                case "Categories":
+                    return "Category"; // Fudge for non-plural built-in field name :/
+                default:
+                    return info.Name;
+            }
+        }
+
         public static Func<T, object> CreateGetterDelegate<T>(this PropertyInfo info)
         {
             var getMethod = info.GetGetMethod();
@@ -21,24 +30,12 @@ namespace Impey.Sitefinity.Repository.Extensions
             return Expression.Lambda<Func<T, object>>(body, target).Compile();
         }
 
-        public static Func<T, object> CreateGetMethodDelegate<T>(this PropertyInfo info, GetMethodCache methodCache)
+        public static Func<T, object> CreateGetMethodDelegate<T>(this PropertyInfo info)
         {
+            var method = GetMethodCache.ConstructForType(info.PropertyType);
             var target = Expression.Parameter(typeof(T));
-
-            var method = methodCache.GetString;
-            if (info.PropertyType != typeof(string))
-            {
-                if (info.PropertyType.IsGenericType && info.PropertyType.GetGenericTypeDefinition() == typeof(List<>))
-                {
-                    method = methodCache.GetRelatedItems.MakeGenericMethod(info.PropertyType.GetGenericArguments()[0]);
-                }
-                else
-                {
-                    method = (info.PropertyType == typeof(Image) ? methodCache.GetRelatedItem : methodCache.GetValue).MakeGenericMethod(info.PropertyType);
-                }
-            }
-
-            var body = Expression.Convert(Expression.Call(method, target, Expression.Constant(info.Name)), typeof(object));
+            var name = Expression.Constant(info.GetName());
+            var body = Expression.Convert(Expression.Call(method, target, name), typeof(object));
 
             return Expression.Lambda<Func<T, object>>(body, target).Compile();
         }

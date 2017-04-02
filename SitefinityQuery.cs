@@ -1,15 +1,16 @@
 ﻿using Impey.Sitefinity.Repository.Base;
+using Impey.Sitefinity.Repository.Cache;
 using Impey.Sitefinity.Repository.Extensions;
+using Impey.Sitefinity.Repository.Fields;
 using Impey.Sitefinity.Repository.Helpers;
-using Impey.Sitefinity.Repository.Models;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
-using Telerik.Sitefinity;
+using Telerik.OpenAccess;
 using Telerik.Sitefinity.DynamicModules;
-using Telerik.Sitefinity.Fluent;
 using Telerik.Sitefinity.Lifecycle;
 using Telerik.Sitefinity.Model;
 using Telerik.Sitefinity.Utilities.TypeConverters;
@@ -19,8 +20,6 @@ namespace Impey.Sitefinity.Repository
     public class SitefinityQuery<TModel, TContent> : ISitefinityQuery<TModel>
         where TContent : ILifecycleDataItem, IScheduleable
     {
-        private static readonly GetMethodCache GetMethodCache;
-        private static readonly WorkWithMethodCache WorkWithMethodCache;
         private static readonly Dictionary<string, Action<TModel, object>> SetterCache;
         private static readonly Dictionary<string, Func<TContent, object>> GetterCache;
 
@@ -28,39 +27,6 @@ namespace Impey.Sitefinity.Repository
 
         static SitefinityQuery()
         {
-            GetMethodCache = new GetMethodCache
-            {
-                GetString = typeof(DataExtensions).GetMethod("GetString", new[] { typeof(IDynamicFieldsContainer), typeof(string) }),
-                GetValue = typeof(DataExtensions).GetMethods().Single(m => m.Name == "GetValue" && m.IsGenericMethod),
-                GetRelatedItem = typeof(RelatedDataExtensions).GetMethod("GetRelatedItem"),
-                GetRelatedItems = typeof(RelatedDataExtensions).GetMethod("GetRelatedItems")
-            };
-
-            string typeName = typeof(TContent).Name + "s";
-            var workWithMethod = typeof(FluentSitefinity).GetMethod(typeName);
-            bool isExtension = false;
-
-            if (workWithMethod == null)
-            {
-                workWithMethod = typeof(ContentModulesFluentExtensions).GetMethod(typeName, new[] { typeof(FluentSitefinity) });
-                isExtension = true;
-            }
-
-            if (workWithMethod != null)
-            {
-                var facade = workWithMethod.Invoke(
-                    isExtension ? null : App.WorkWith(), 
-                    !isExtension ? null : new object[] { App.WorkWith() });
-
-                WorkWithMethodCache = new WorkWithMethodCache
-                {
-                    WorkWithMethod = workWithMethod,
-                    IsExtension = isExtension,
-                    PublishedMethod = facade.GetType().GetMethod("Published"),
-                    GetMethod = facade.GetType().GetMethod("Get", new Type[0])
-                };
-            }
-
             var setters = typeof(TModel)
                 .GetProperties(BindingFlags.Public | BindingFlags.Instance)
                 .Select(p => new { Info = p, Setter = p.CreateSetterDelegate<TModel>() })
@@ -77,23 +43,14 @@ namespace Impey.Sitefinity.Repository
             setters
                 .Where(s => !GetterCache.ContainsKey(s.Info.Name))
                 .ToList()
-                .ForEach(s => GetterCache.Add(s.Info.Name, s.Info.CreateGetMethodDelegate<TContent>(GetMethodCache)));
+                .ForEach(s => GetterCache.Add(s.Info.Name, s.Info.CreateGetMethodDelegate<TContent>()));
         }
 
-        public SitefinityQuery(string dynamicTypeName)
+        public SitefinityQuery(string dynamicTypeName, bool published = true)
         {
-            if (WorkWithMethodCache != null)
-            {
-                var facade = WorkWithMethodCache.WorkWithMethod.Invoke(
-                    WorkWithMethodCache.IsExtension ? null : App.WorkWith(),
-                    !WorkWithMethodCache.IsExtension ? null : new object[] { App.WorkWith() });
+            query = WorkWithMethodCache<TContent>.GetQuery(published);
 
-                facade = WorkWithMethodCache.PublishedMethod.Invoke(facade, null);
-                facade = WorkWithMethodCache.GetMethod.Invoke(facade, null);
-
-                query = (IQueryable<TContent>)facade;
-            }
-            else
+            if (query == null)
             {
                 var dynamicType = TypeResolutionService.ResolveType(dynamicTypeName);
                 var dynamicModuleType = DynamicModuleHelper.GetDynamicModuleType(dynamicType.Name, dynamicType.Namespace);
@@ -102,6 +59,11 @@ namespace Impey.Sitefinity.Repository
                     .GetManager(DynamicModuleManager.GetDefaultProviderName(dynamicModuleType.ModuleName))
                     .GetDataItems(dynamicType)
                     .Cast<TContent>();
+
+                if (published)
+                {
+                    query = query.Published();
+                }
             }
         }
 
@@ -114,11 +76,31 @@ namespace Impey.Sitefinity.Repository
             foreach (var setter in SetterCache)
             {
                 object value = GetterCache[setter.Key](item);
+
                 if (value is Lstring)
                 {
                     string temp = (Lstring)value;
                     value = temp;
                 }
+                else if (value is Telerik.Sitefinity.Libraries.Model.Image)
+                {
+                    Image temp = (Telerik.Sitefinity.Libraries.Model.Image)value;
+                    value = temp;
+                }
+                else if (value is TrackedList<Guid>)
+                {
+                    var listType = typeof(TModel).GetProperty(setter.Key).PropertyType;
+                    var categoryType = listType.GetGenericArguments()[0];
+
+                    var list = (IList)Activator.CreateInstance(listType);
+                    foreach (var id in (TrackedList<Guid>)value)
+                    {
+                        list.Add(Activator.CreateInstance(categoryType, id));
+                    }
+
+                    value = list;
+                }
+
                 setter.Value(model, value);
             }
 
@@ -157,36 +139,36 @@ namespace Impey.Sitefinity.Repository
 
         public TModel FirstOrDefault(Expression<Func<TModel, bool>> whereExpression)
         {
-            return SitefinityWhere(whereExpression.ConvertToContentExpression<TModel, TContent>(GetMethodCache)).FirstOrDefault();
+            return SitefinityWhere(whereExpression.ConvertToContentExpression<TModel, TContent>()).FirstOrDefault();
         }
 
         public ISitefinityQuery<TModel> Where(Expression<Func<TModel, bool>> whereExpression)
         {
-            return SitefinityWhere(whereExpression.ConvertToContentExpression<TModel, TContent>(GetMethodCache));
+            return SitefinityWhere(whereExpression.ConvertToContentExpression<TModel, TContent>());
         }
 
         public ISitefinityQuery<TModel> OrderBy<TComparable>(Expression<Func<TModel, TComparable>> orderByExpression)
             where TComparable : IComparable
         {
-            return SitefinityOrderBy(orderByExpression.ConvertToContentExpression<TModel, TContent, TComparable>(GetMethodCache));
+            return SitefinityOrderBy(orderByExpression.ConvertToContentExpression<TModel, TContent, TComparable>());
         }
 
         public ISitefinityQuery<TModel> OrderByDescending<TComparable>(Expression<Func<TModel, TComparable>> orderByExpression)
             where TComparable : IComparable
         {
-            return SitefinityOrderByDescending(orderByExpression.ConvertToContentExpression<TModel, TContent, TComparable>(GetMethodCache));
+            return SitefinityOrderByDescending(orderByExpression.ConvertToContentExpression<TModel, TContent, TComparable>());
         }
 
         public ISitefinityQuery<TModel> ThenBy<TComparable>(Expression<Func<TModel, TComparable>> orderByExpression)
             where TComparable : IComparable
         {
-            return SitefinityThenBy(orderByExpression.ConvertToContentExpression<TModel, TContent, TComparable>(GetMethodCache));
+            return SitefinityThenBy(orderByExpression.ConvertToContentExpression<TModel, TContent, TComparable>());
         }
 
         public ISitefinityQuery<TModel> ThenByDescending<TComparable>(Expression<Func<TModel, TComparable>> orderByExpression)
             where TComparable : IComparable
         {
-            return SitefinityThenByDescending(orderByExpression.ConvertToContentExpression<TModel, TContent, TComparable>(GetMethodCache));
+            return SitefinityThenByDescending(orderByExpression.ConvertToContentExpression<TModel, TContent, TComparable>());
         }
 
         public ISitefinityQuery<TModel> Take(int count)
@@ -203,12 +185,22 @@ namespace Impey.Sitefinity.Repository
 
         public List<TModel> ToList()
         {
-            return query.Published().Select(Map).ToList();
+            return query.Select(Map).ToList();
         }
 
         public TModel FirstOrDefault()
         {
-            return Map(query.Published().FirstOrDefault());
+            return Map(query.FirstOrDefault());
+        }
+
+        public IEnumerator<TModel> GetEnumerator()
+        {
+            return query.Select(Map).GetEnumerator();
+        }
+
+        IEnumerator IEnumerable.GetEnumerator()
+        {
+            return this.GetEnumerator();
         }
     }
 }

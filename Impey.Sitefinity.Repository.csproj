@@ -105,6 +105,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Fields\Tag.cs" />
+    <Compile Include="Fields\Category.cs" />
+    <Compile Include="Fields\Image.cs" />
     <Compile Include="SitefinityBlogPostRepository.cs" />
     <Compile Include="SitefinityEventRepository.cs" />
     <Compile Include="SitefinityNewsItemRepository.cs" />
@@ -116,8 +119,8 @@
     <Compile Include="Extensions\RelatedDataExtensions.cs" />
     <Compile Include="Extensions\TypeExtensions.cs" />
     <Compile Include="Helpers\DynamicModuleHelper.cs" />
-    <Compile Include="Models\GetMethodCache.cs" />
-    <Compile Include="Models\WorkWithMethodCache.cs" />
+    <Compile Include="Cache\GetMethodCache.cs" />
+    <Compile Include="Cache\WorkWithMethodCache.cs" />
     <Compile Include="SitefinityQuery.cs" />
     <Compile Include="Base\ISitefinityQuery.cs" />
     <Compile Include="Base\ISitefinityRepository.cs" />
